@@ -5,6 +5,7 @@ import { Spinner, Tabs } from "../flowbite";
 import { Tooltip } from "flowbite-react";
 import CompatConflictCard from "./CompatConflictCard";
 import CompatCollapsibleSection from "./CompatCollapsibleSection";
+import CompatVirtualRows from "./CompatVirtualRows";
 import { compareModNames, sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { PiFiles } from "react-icons/pi";
 import {
@@ -500,45 +501,51 @@ const CompatScreen = memo(() => {
                           title={topLevelFolder}
                           count={groupedDisplayPackFileCollisions[topLevelFolder].length}
                         >
-                          <div className="space-y-3 text-sm">
-                            {groupedDisplayPackFileCollisions[topLevelFolder].map((collision) => {
-                              const firstIsWinner =
-                                higherPriorityPack(
-                                  collision.firstPackName,
-                                  collision.secondPackName,
-                                  orderedPackNames,
-                                ) === "first";
+                          {() => (
+                            <CompatVirtualRows
+                              key={`${useEnabledModsOnly}:${selectedModFilter}`}
+                              className="text-sm"
+                              rowClassName="pb-3"
+                              rowCount={groupedDisplayPackFileCollisions[topLevelFolder].length}
+                              renderRow={(index) => {
+                                const collision = groupedDisplayPackFileCollisions[topLevelFolder][index];
+                                const firstIsWinner =
+                                  higherPriorityPack(
+                                    collision.firstPackName,
+                                    collision.secondPackName,
+                                    orderedPackNames,
+                                  ) === "first";
 
-                              return (
-                                <CompatConflictCard
-                                  key={`${collision.firstPackName}:${collision.secondPackName}:${collision.fileName}`}
-                                  heading={collision.fileName}
-                                  headingLabel={localized.packFileName}
-                                  first={{ packName: collision.firstPackName }}
-                                  second={{ packName: collision.secondPackName }}
-                                  firstIsWinner={firstIsWinner}
-                                  status={
-                                    collision.areSameSize && (
-                                      <div className="flex items-start gap-2 text-sm">
-                                        <PiFiles className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                                        <div>
-                                          <div className="font-bold">{localized.sameFileSize}</div>
-                                          <div className="text-xs text-emerald-800 dark:text-emerald-200">
-                                            {localized.sameFileSizeLikelyNoConflict}
+                                return (
+                                  <CompatConflictCard
+                                    heading={collision.fileName}
+                                    headingLabel={localized.packFileName}
+                                    first={{ packName: collision.firstPackName }}
+                                    second={{ packName: collision.secondPackName }}
+                                    firstIsWinner={firstIsWinner}
+                                    status={
+                                      collision.areSameSize && (
+                                        <div className="flex items-start gap-2 text-sm">
+                                          <PiFiles className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                                          <div>
+                                            <div className="font-bold">{localized.sameFileSize}</div>
+                                            <div className="text-xs text-emerald-800 dark:text-emerald-200">
+                                              {localized.sameFileSizeLikelyNoConflict}
+                                            </div>
                                           </div>
                                         </div>
-                                      </div>
-                                    )
-                                  }
-                                  labels={{
-                                    winner: localized.compatHigherPriority,
-                                    lowerPriority: localized.compatLowerPriority,
-                                    compare: localized.compatCompare,
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
+                                      )
+                                    }
+                                    labels={{
+                                      winner: localized.compatHigherPriority,
+                                      lowerPriority: localized.compatLowerPriority,
+                                      compare: localized.compatCompare,
+                                    }}
+                                  />
+                                );
+                              }}
+                            />
+                          )}
                         </CompatCollapsibleSection>
                       ))}
                     </div>
@@ -559,39 +566,45 @@ const CompatScreen = memo(() => {
                           title={dbName}
                           count={groupedDisplayPackTableCollisions[dbName].length}
                         >
-                          <div className="space-y-3 text-sm">
-                            {groupedDisplayPackTableCollisions[dbName].map((collision) => {
-                              const firstIsWinner = higherPriorityDatabaseFile(collision) === "first";
+                          {() => (
+                            <CompatVirtualRows
+                              key={`${useEnabledModsOnly}:${selectedModFilter}`}
+                              className="text-sm"
+                              rowClassName="pb-3"
+                              rowCount={groupedDisplayPackTableCollisions[dbName].length}
+                              renderRow={(index) => {
+                                const collision = groupedDisplayPackTableCollisions[dbName][index];
+                                const firstIsWinner = higherPriorityDatabaseFile(collision) === "first";
 
-                              return (
-                                <CompatConflictCard
-                                  key={`${collision.firstPackName}:${collision.secondPackName}:${collision.fileName}:${collision.secondFileName}:${collision.key}:${collision.value}`}
-                                  heading={collision.value}
-                                  headingLabel={localized.key}
-                                  headingClassName="font-mono text-base font-bold tracking-tight text-amber-950 sm:text-lg dark:text-amber-100"
-                                  metaClassName="mt-2 text-sm text-gray-700 dark:text-gray-300"
-                                  meta={
-                                    <div className="grid gap-2 sm:grid-cols-[max-content_minmax(0,1fr)] sm:items-center">
-                                      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                        {localized.tableColumn}
-                                      </span>
-                                      <code className="min-w-0 break-all rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-sm font-semibold leading-snug text-gray-800 dark:border-gray-600 dark:bg-gray-900/40 dark:text-gray-100">
-                                        {collision.key}
-                                      </code>
-                                    </div>
-                                  }
-                                  first={{ packName: collision.firstPackName, fileName: collision.fileName }}
-                                  second={{ packName: collision.secondPackName, fileName: collision.secondFileName }}
-                                  firstIsWinner={firstIsWinner}
-                                  labels={{
-                                    winner: localized.compatHigherPriority,
-                                    lowerPriority: localized.compatLowerPriority,
-                                    compare: localized.compatCompare,
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
+                                return (
+                                  <CompatConflictCard
+                                    heading={collision.value}
+                                    headingLabel={localized.key}
+                                    headingClassName="font-mono text-base font-bold tracking-tight text-amber-950 sm:text-lg dark:text-amber-100"
+                                    metaClassName="mt-2 text-sm text-gray-700 dark:text-gray-300"
+                                    meta={
+                                      <div className="grid gap-2 sm:grid-cols-[max-content_minmax(0,1fr)] sm:items-center">
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                          {localized.tableColumn}
+                                        </span>
+                                        <code className="min-w-0 break-all rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-sm font-semibold leading-snug text-gray-800 dark:border-gray-600 dark:bg-gray-900/40 dark:text-gray-100">
+                                          {collision.key}
+                                        </code>
+                                      </div>
+                                    }
+                                    first={{ packName: collision.firstPackName, fileName: collision.fileName }}
+                                    second={{ packName: collision.secondPackName, fileName: collision.secondFileName }}
+                                    firstIsWinner={firstIsWinner}
+                                    labels={{
+                                      winner: localized.compatHigherPriority,
+                                      lowerPriority: localized.compatLowerPriority,
+                                      compare: localized.compatCompare,
+                                    }}
+                                  />
+                                );
+                              }}
+                            />
+                          )}
                         </CompatCollapsibleSection>
                       ))}
                     </div>
@@ -622,78 +635,70 @@ const CompatScreen = memo(() => {
                         const tableKeyGroupToRefs = groupedMissingTableReferences[firstPackName];
                         return (
                           <CompatCollapsibleSection key={firstPackName} title={firstPackName}>
-                            {Object.keys(tableKeyGroupToRefs).map((tableKeyGroup) => {
-                              const refs = tableKeyGroupToRefs[tableKeyGroup];
-                              let doneTableKeyGroup = false;
-                              return refs.map((ref) => {
-                                const targetDBFileName = ref.targetDBFileName;
-                                const targetFieldName = ref.targetFieldName;
-                                const value = ref.value;
-                                const originFieldName = ref.originFieldName;
-                                const originDBFileName = ref.originDBFileName;
-                                const originFileSuffix = ref.originFileSuffix;
-
-                                const fragment = (
-                                  <React.Fragment
-                                    key={
-                                      firstPackName +
-                                      targetDBFileName +
-                                      targetFieldName +
-                                      value +
-                                      originFieldName +
-                                      originDBFileName +
-                                      originFileSuffix +
-                                      doneTableKeyGroup
+                            {() => {
+                              // Each table and column gets a heading row above its missing keys.
+                              const rows: { tableKeyGroup: string; ref?: DBRefOrigin }[] = [];
+                              for (const [tableKeyGroup, refs] of Object.entries(tableKeyGroupToRefs)) {
+                                rows.push({ tableKeyGroup });
+                                for (const ref of refs) rows.push({ tableKeyGroup, ref });
+                              }
+                              return (
+                                <CompatVirtualRows
+                                  rowCount={rows.length}
+                                  renderRow={(index) => {
+                                    const { tableKeyGroup, ref } = rows[index];
+                                    if (!ref) {
+                                      return (
+                                        <div className="ml-4">
+                                          <span className="make-tooltip-inline">
+                                            <Tooltip
+                                              style="light"
+                                              content={
+                                                <>
+                                                  <p>{localized.missingKeyTableAndColumn}</p>
+                                                </>
+                                              }
+                                            >
+                                              <span className="text-center w-full ">{tableKeyGroup}</span>
+                                            </Tooltip>
+                                          </span>
+                                        </div>
+                                      );
                                     }
-                                  >
-                                    {!doneTableKeyGroup && (
-                                      <div className="ml-4">
+
+                                    const { value, originFieldName, originFileSuffix } = ref;
+
+                                    return (
+                                      <div className="ml-8">
                                         <span className="make-tooltip-inline">
                                           <Tooltip
                                             style="light"
                                             content={
                                               <>
-                                                <p>{localized.missingKeyTableAndColumn}</p>
+                                                <p>{localized.missingDBKey}</p>
                                               </>
                                             }
                                           >
-                                            <span className="text-center w-full ">{tableKeyGroup}</span>
+                                            <span className="text-center w-full decoration-red-700 underline decoration-2 underline-offset-4">
+                                              {value}
+                                            </span>
                                           </Tooltip>
                                         </span>
-                                      </div>
-                                    )}
 
-                                    <div className="ml-8">
-                                      <span className="make-tooltip-inline">
-                                        <Tooltip
-                                          style="light"
-                                          content={
-                                            <>
-                                              <p>{localized.missingDBKey}</p>
-                                            </>
-                                          }
-                                        >
-                                          <span className="text-center w-full decoration-red-700 underline decoration-2 underline-offset-4">
-                                            {value}
+                                        <span className="ml-2 make-tooltip-inline">
+                                          <span className="text-center w-full">
+                                            {localized.missingKeyIsReferencedIn &&
+                                              localized.missingKeyIsReferencedIn
+                                                .replace("<originFileSuffix>", originFileSuffix)
+                                                .replace("<originFieldName>", originFieldName)}
                                           </span>
-                                        </Tooltip>
-                                      </span>
-
-                                      <span className="ml-2 make-tooltip-inline">
-                                        <span className="text-center w-full">
-                                          {localized.missingKeyIsReferencedIn &&
-                                            localized.missingKeyIsReferencedIn
-                                              .replace("<originFileSuffix>", originFileSuffix)
-                                              .replace("<originFieldName>", originFieldName)}
                                         </span>
-                                      </span>
-                                    </div>
-                                  </React.Fragment>
-                                );
-                                doneTableKeyGroup = true;
-                                return fragment;
-                              });
-                            })}
+                                      </div>
+                                    );
+                                  }}
+                                />
+                              );
+                            }}
                           </CompatCollapsibleSection>
                         );
                       })}
