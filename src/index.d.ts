@@ -658,6 +658,8 @@ declare global {
     filesToRead?: string[];
     skipSorting?: boolean;
     readFlows?: boolean;
+    /** Identical table cells share one object. For read-only use: editing one cell edits all its copies. */
+    shareIdenticalCells?: boolean;
   }
 
   type PackImportSource = import("./utility/packImportPlan").PackImportSource;

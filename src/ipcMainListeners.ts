@@ -27,7 +27,7 @@ import { createSerializedBuilds } from "./utility/serializedBuilds";
 import { createPackReadRegistry } from "./utility/packReadRegistry";
 import type { PackRowsForSave } from "./utility/packRowsForSave";
 import { clonePackIndexForTable } from "./components/viewer/viewerPackIndex";
-import { selectPacksToCheck } from "./modCompat/compatScope";
+import { preferCompatReadPacks, selectPacksToCheck } from "./modCompat/compatScope";
 import {
   findExistingPackedFlowName,
   isPackedFlowName,
@@ -40,6 +40,7 @@ import {
   canReuseParsedPackForCompat,
   mergeCompatTextIntoPack,
   packNeedsCompatTextRefresh,
+  stripPackToIndex,
 } from "./modCompat/compatPackReuse";
 import { readJsonDiskCache, writeJsonDiskCache } from "./utility/jsonDiskCache";
 import {
@@ -6569,10 +6570,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const textPack = await readPackForCompat(pack.path, { skipParsingTables: true, readScripts: true }, displayName);
     return mergeCompatTextIntoPack(pack, textPack);
   };
+  /**
+   * Makes the parsed tables and script text of every mod available to the compat check.
+   *
+   * Packs it has to read share identical cells, which keeps a pack of hundreds of megabytes of tables from
+   * filling the heap. They stay out of `appData.packsData` so nothing edits a shared cell, and are dropped
+   * with the check.
+   * @param mods - The mods to check.
+   * @returns The packs read for this check.
+   */
   const prepareModsForCompat = async (mods: Mod[]) => {
     let reusedCount = 0;
     let parsedCount = 0;
     let refreshedTextCount = 0;
+    const compatReadPacks: Pack[] = [];
     for (const mod of mods) {
       const stat = await fs.promises.stat(mod.path);
       const retainedPack = appData.packsData.find((pack) => pathsMatch(pack.path, mod.path));
@@ -6582,13 +6593,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         continue;
       }
 
-      const parsedPack = await readPackForCompat(mod.path, { skipParsingTables: false, readScripts: true }, mod.name);
-      replaceRetainedCompatPack(parsedPack, mod);
+      const parsedPack = await readPackForCompat(
+        mod.path,
+        { skipParsingTables: false, readScripts: true, shareIdenticalCells: true },
+        mod.name,
+      );
+      compatReadPacks.push(parsedPack);
+      if (!retainedPack || !canReusePackIndexForCompat(retainedPack, stat)) {
+        replaceRetainedCompatPack(stripPackToIndex(parsedPack), mod);
+      }
       parsedCount++;
     }
     console.log(
       `compat pack preparation: reused ${reusedCount}, parsed ${parsedCount}, refreshed ${refreshedTextCount} text files`,
     );
+    return compatReadPacks;
   };
   const prepareVanillaPacksForCompat = async (vanillaPackPaths: string[]) => {
     let reusedCount = 0;
@@ -9223,7 +9242,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       mainWindow?.webContents.send("setPackCollisions", compatCheckCache.packCollisions);
       return;
     }
-    await prepareModsForCompat(mods);
+    const compatReadPacks = await prepareModsForCompat(mods);
     // Startup retains vanilla file indexes. Reuse those unless the pack changed, and only reload
     // script/XML payloads when the optional vanilla analysis actually needs them.
     await prepareVanillaPacksForCompat(vanillaPackPaths);
@@ -9267,7 +9286,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     // packs the user had not selected. It also made the result depend on session history, so the same
     // mods could produce different reports, and made compatCheckCache unsound: its key covers `mods`
     // and the vanilla packs, while the answer depended on whatever else happened to be loaded.
-    const packsToCheck = selectPacksToCheck(appData.packsData, [...mods.map((mod) => mod.path), ...vanillaPackPaths]);
+    const packsToCheck = selectPacksToCheck(preferCompatReadPacks(appData.packsData, compatReadPacks), [
+      ...mods.map((mod) => mod.path),
+      ...vanillaPackPaths,
+    ]);
     console.log(`getCompatData: checking ${packsToCheck.length} packs of ${appData.packsData.length} loaded`);
 
     let lastProgressSentAt = 0;

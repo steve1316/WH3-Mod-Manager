@@ -22,3 +22,27 @@ export const selectPacksToCheck = <TPack extends { path: string }>(
   const wanted = new Set(requestedPackPaths.map((packPath) => nodePath.resolve(packPath)));
   return loadedPacks.filter((pack) => wanted.has(nodePath.resolve(pack.path)));
 };
+
+/**
+ * The loaded packs, with each pack read just for the compat check standing in for the loaded copy of its file.
+ *
+ * Packs read for the check share identical cells, so they are kept out of `appData.packsData`, where an edit
+ * to one cell would change every copy of it.
+ * @param loadedPacks - The packs already loaded, usually `appData.packsData`.
+ * @param compatReadPacks - The packs read for this check.
+ * @returns The combined list, in the loaded order, with packs not loaded at all at the end.
+ */
+export const preferCompatReadPacks = <TPack extends { path: string }>(
+  loadedPacks: readonly TPack[],
+  compatReadPacks: readonly TPack[],
+): TPack[] => {
+  const compatReadByPath = new Map(compatReadPacks.map((pack) => [nodePath.resolve(pack.path), pack]));
+  const packs = loadedPacks.map((pack) => {
+    const resolvedPath = nodePath.resolve(pack.path);
+    const compatRead = compatReadByPath.get(resolvedPath);
+    if (!compatRead) return pack;
+    compatReadByPath.delete(resolvedPath);
+    return compatRead;
+  });
+  return [...packs, ...compatReadByPath.values()];
+};

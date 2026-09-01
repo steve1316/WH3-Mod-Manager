@@ -2975,12 +2975,41 @@ export const readFromExistingPack = async (
     readTables,
   } as Pack;
 };
+/** The cells read so far, split by key flag, then cell type, then the cell's last value. */
+type SharedCells = Record<"key" | "value", Map<string, Map<number | string, SchemaField>>>;
+
+/**
+ * The cell already read with the same type, key flag and values, or `cell` itself the first time it is seen.
+ *
+ * The last value identifies a cell: a StringU8's length is its ASCII string's length, and an absent OptionalStringU8
+ * is the number 0 where a present one ends in a string.
+ * @param sharedCells - The cells read so far.
+ * @param cell - The cell just parsed.
+ * @returns The cell to store in the table.
+ */
+const shareCell = (sharedCells: SharedCells, cell: SchemaField) => {
+  const val = cell.fields[cell.fields.length - 1]?.val;
+  // Maps treat -0 as 0, so it is left unshared.
+  if ((typeof val !== "number" && typeof val !== "string") || Object.is(val, -0)) return cell;
+  const cellsByType = cell.isKey ? sharedCells.key : sharedCells.value;
+  let cellsByVal = cellsByType.get(cell.type);
+  if (!cellsByVal) {
+    cellsByVal = new Map();
+    cellsByType.set(cell.type, cellsByVal);
+  }
+  const sharedCell = cellsByVal.get(val);
+  if (sharedCell) return sharedCell;
+  cellsByVal.set(val, cell);
+  return cell;
+};
+
 const readDBPackedFiles = async (
   packReadingOptions: PackReadingOptions,
   dbPackFiles: PackedFile[],
   buffer: Buffer,
   startPos: number,
   modPath: string,
+  sharedCells?: SharedCells,
 ) => {
   let currentPos = 0;
   for (const pack_file of dbPackFiles) {
@@ -3097,7 +3126,7 @@ const readDBPackedFiles = async (
               schemaField.isKey = true;
             }
             pack_file.schemaFields = pack_file.schemaFields || [];
-            pack_file.schemaFields.push(schemaField);
+            pack_file.schemaFields.push(sharedCells ? shareCell(sharedCells, schemaField) : schemaField);
             // if (pack_file.name.includes("xyz")) {
             // console.log(dbName, name, field_type);
             //   console.log("lastPos:", lastPos);
@@ -3525,12 +3554,13 @@ export const readPack = async (
     const readRuns = groupPackedFilesIntoReadRuns(dbPackFilesToRead);
     const dbReadStartedAt = performance.now();
     let dbBytesRead = 0;
+    const sharedCells = packReadingOptions.shareIdenticalCells ? { key: new Map(), value: new Map() } : undefined;
 
     for (const run of readRuns) {
       const buffer = Buffer.allocUnsafe(run.endPos - run.startPos);
       dbBytesRead += buffer.length;
       fs.readSync(fileId, buffer, 0, buffer.length, run.startPos);
-      await readDBPackedFiles(packReadingOptions, run.packedFiles, buffer, run.startPos, modPath);
+      await readDBPackedFiles(packReadingOptions, run.packedFiles, buffer, run.startPos, modPath, sharedCells);
     }
 
     if (dbPackFilesToRead.length > 0) {

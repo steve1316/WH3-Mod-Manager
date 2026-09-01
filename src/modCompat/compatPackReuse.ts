@@ -24,6 +24,18 @@ export const packHasCompatTextFiles = (pack: Pack) =>
 export const packNeedsCompatTextRefresh = (pack: Pack) =>
   pack.packedFiles.some((packedFile) => isCompatTextFileName(packedFile.name) && packedFile.text === undefined);
 
+/**
+ * A copy of `pack` holding only its file index, like a read that skipped parsing tables.
+ * @param pack - A pack read with its tables parsed.
+ * @returns The index-only copy, sharing nothing mutable with `pack`.
+ */
+export const stripPackToIndex = (pack: Pack): Pack => ({
+  ...pack,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  packedFiles: pack.packedFiles.map(({ schemaFields, text, buffer, ...indexEntry }) => indexEntry),
+  readTables: [],
+});
+
 /** Merge only transient source text, preserving the retained pack's parsed DB rows and index. */
 export const mergeCompatTextIntoPack = (target: Pack, source: Pack) => {
   const sourceTextByName = new Map(

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import * as nodePath from "path";
 
-import { selectPacksToCheck } from "../src/modCompat/compatScope";
+import { preferCompatReadPacks, selectPacksToCheck } from "../src/modCompat/compatScope";
 
 /** Built with the platform's own separator, so path comparison is exercised rather than string equality. */
 const modPath = (...parts: string[]) => nodePath.join("mods", ...parts);
@@ -61,5 +61,31 @@ describe("packs a compat check should look at", () => {
 
   it("checks nothing when nothing was asked about", () => {
     expect(selectPacksToCheck([pack(modPath("a.pack"))], [])).toEqual([]);
+  });
+});
+
+describe("packs read just for a compat check", () => {
+  it("stand in for the loaded copy of the same file, in the loaded order", () => {
+    const loaded = [
+      { ...pack(modPath("a.pack")), copy: "loaded" },
+      { ...pack(modPath("b.pack")), copy: "loaded" },
+      { ...pack(modPath("c.pack")), copy: "loaded" },
+    ];
+    const compatRead = [{ ...pack(nodePath.resolve(modPath("b.pack"))), copy: "compat" }];
+
+    const packs = preferCompatReadPacks(loaded, compatRead);
+
+    expect(packs.map((entry) => [entry.name, entry.copy])).toEqual([
+      ["a.pack", "loaded"],
+      ["b.pack", "compat"],
+      ["c.pack", "loaded"],
+    ]);
+  });
+
+  it("are added when nothing loaded has the same file", () => {
+    const loaded = [pack(modPath("a.pack"))];
+    const compatRead = [pack(modPath("new.pack"))];
+
+    expect(preferCompatReadPacks(loaded, compatRead).map((entry) => entry.name)).toEqual(["a.pack", "new.pack"]);
   });
 });
