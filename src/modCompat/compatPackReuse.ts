@@ -1,4 +1,4 @@
-import type { Pack } from "../packFileTypes";
+import type { Pack, PackedFile } from "../packFileTypes";
 
 export interface CompatPackStat {
   size: number;
@@ -35,6 +35,23 @@ export const stripPackToIndex = (pack: Pack): Pack => ({
   packedFiles: pack.packedFiles.map(({ schemaFields, text, buffer, ...indexEntry }) => indexEntry),
   readTables: [],
 });
+
+/**
+ * A copy of `retained` with every table that `parsed` has parsed swapped in.
+ * @param retained - The loaded copy of the pack, which may already hold some parsed tables.
+ * @param parsed - The same pack, read again with more of its tables parsed.
+ * @returns The combined pack. `retained` is left as it was.
+ */
+export const overlayParsedTables = (retained: Pack, parsed: Pack): Pack => {
+  const parsedByName = new Map<string, PackedFile>();
+  for (const packedFile of parsed.packedFiles) {
+    if (packedFile.schemaFields) parsedByName.set(packedFile.name, packedFile);
+  }
+  return {
+    ...retained,
+    packedFiles: retained.packedFiles.map((packedFile) => parsedByName.get(packedFile.name) ?? packedFile),
+  };
+};
 
 /** Merge only transient source text, preserving the retained pack's parsed DB rows and index. */
 export const mergeCompatTextIntoPack = (target: Pack, source: Pack) => {

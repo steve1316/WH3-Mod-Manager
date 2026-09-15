@@ -5,6 +5,7 @@ import {
   canReuseParsedPackForCompat,
   isCompatTextFileName,
   mergeCompatTextIntoPack,
+  overlayParsedTables,
   packNeedsCompatTextRefresh,
   stripPackToIndex,
 } from "../src/modCompat/compatPackReuse";
@@ -71,5 +72,22 @@ describe("stripping a compat-read pack to its index", () => {
     expect(index.packedFiles[1]).toEqual({ name: "script\a.lua", file_size: 1, start_pos: 0 });
     // The compat check clears text on the parsed pack as it goes, which must not reach the index.
     expect(index.packedFiles[0]).not.toBe(table);
+  });
+});
+
+describe("overlaying parsed tables onto a retained pack", () => {
+  it("takes each table from whichever pack parsed it, without editing the retained pack", () => {
+    const cachedTable = { ...packedFile("db\\a_tables\\data__"), schemaFields: [] } as PackedFile;
+    const unreadTable = packedFile("db\\b_tables\\data__");
+    const script = packedFile("script\\a.lua");
+    const retained = pack([cachedTable, unreadTable, script], ["db\\a_tables\\"]);
+    const parsedTable = { ...packedFile("db\\b_tables\\data__"), schemaFields: [] } as PackedFile;
+    const parsed = pack([packedFile("db\\a_tables\\data__"), parsedTable, packedFile("script\\a.lua")], []);
+
+    const combined = overlayParsedTables(retained, parsed);
+
+    expect(combined.packedFiles).toEqual([cachedTable, parsedTable, script]);
+    expect(combined.packedFiles[1]).toBe(parsedTable);
+    expect(retained.packedFiles[1]).toBe(unreadTable);
   });
 });

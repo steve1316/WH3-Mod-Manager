@@ -39,6 +39,7 @@ import {
   canReusePackIndexForCompat,
   canReuseParsedPackForCompat,
   mergeCompatTextIntoPack,
+  overlayParsedTables,
   packNeedsCompatTextRefresh,
   stripPackToIndex,
 } from "./modCompat/compatPackReuse";
@@ -9272,12 +9273,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
       tablesStillToRead = unservedPrefixes;
     }
-    if (lazyVanillaReadPlan.packPaths.length > 0 && tablesStillToRead.length > 0) {
-      await readModsByPath(
-        lazyVanillaReadPlan.packPaths,
-        { skipParsingTables: false, tablesToRead: tablesStillToRead },
-        true,
-      );
+    // Like the mod packs, these tables share identical cells, so they are only lent to this check and never
+    // reach appData.packsData.
+    if (tablesStillToRead.length > 0) {
+      for (const vanillaPackPath of lazyVanillaReadPlan.packPaths) {
+        const parsedPack = await readPackForCompat(
+          vanillaPackPath,
+          { skipParsingTables: false, tablesToRead: tablesStillToRead, shareIdenticalCells: true },
+          nodePath.basename(vanillaPackPath),
+        );
+        const retainedPack = appData.packsData.find((pack) => pathsMatch(pack.path, vanillaPackPath));
+        compatReadPacks.push(retainedPack ? overlayParsedTables(retainedPack, parsedPack) : parsedPack);
+      }
     }
     // Only the packs this check was asked about, plus vanilla, which the reference resolution needs.
     //
