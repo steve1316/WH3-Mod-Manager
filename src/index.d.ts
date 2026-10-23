@@ -660,6 +660,8 @@ declare global {
     readFlows?: boolean;
     /** Identical table cells share one object. For read-only use: editing one cell edits all its copies. */
     shareIdenticalCells?: boolean;
+    /** Asked while tables are parsed. Once it returns true the read stops and the remaining tables stay unparsed. */
+    isCanceled?: () => boolean;
   }
 
   type PackImportSource = import("./utility/packImportPlan").PackImportSource;

@@ -136,3 +136,38 @@ describe("reading a pack with shareIdenticalCells", () => {
     expect(first[7]).not.toBe(first[2]);
   });
 });
+
+describe("reading a pack's tables", () => {
+  it("pauses for the event loop between tables once a pause is due", async () => {
+    const packPath = await writeExamplePack();
+    // Every time check sees the pause as due.
+    let now = 0;
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => (now += 1_000));
+    const setImmediateSpy = vi.spyOn(global, "setImmediate");
+
+    try {
+      const pack = await readPack(packPath, { tablesToRead: ["db\\example_tables"] });
+
+      expect(setImmediateSpy).toHaveBeenCalled();
+      expect(cellsOf(pack, "second")).toHaveLength(5);
+    } finally {
+      dateNowSpy.mockRestore();
+      setImmediateSpy.mockRestore();
+    }
+  });
+
+  it("stops parsing tables at the next pause once the read is canceled", async () => {
+    const packPath = await writeExamplePack();
+    let now = 0;
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => (now += 1_000));
+
+    try {
+      const pack = await readPack(packPath, { tablesToRead: ["db\\example_tables"], isCanceled: () => true });
+
+      expect(cellsOf(pack, "first")).toBeUndefined();
+      expect(pack.packedFiles).toHaveLength(2);
+    } finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+});

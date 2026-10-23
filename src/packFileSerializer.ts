@@ -83,6 +83,8 @@ const object_schema = JSON.parse(string_schema);
 const latest_version = Object.keys(object_schema.units_custom_battle_permissions_tables).sort()[0];
 const ver_schema = object_schema.units_custom_battle_permissions_tables[latest_version];
 const zstdFrameMagic = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+/** How long table parsing runs before it pauses so the window can respond. */
+const DB_PARSE_PAUSE_INTERVAL_MS = 50;
 const lz4FrameMagic = Buffer.from([0x04, 0x22, 0x4d, 0x18]);
 let lz4DecompressFrame: ((data: string | Buffer) => Promise<Buffer>) | undefined;
 try {
@@ -3012,7 +3014,14 @@ const readDBPackedFiles = async (
   sharedCells?: SharedCells,
 ) => {
   let currentPos = 0;
+  // A large pack takes seconds to parse on the main process, which freezes the window unless it pauses now and then.
+  let nextPauseAt = Date.now() + DB_PARSE_PAUSE_INTERVAL_MS;
   for (const pack_file of dbPackFiles) {
+    if (Date.now() >= nextPauseAt) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      nextPauseAt = Date.now() + DB_PARSE_PAUSE_INTERVAL_MS;
+      if (packReadingOptions.isCanceled?.()) return;
+    }
     if (
       packReadingOptions.tablesToRead &&
       !packReadingOptions.tablesToRead.some((tableToRead) => pack_file.name.startsWith(tableToRead))

@@ -6555,7 +6555,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     try {
       return await readPackRegistered(packPath, packReadingOptions);
     } finally {
-      mainWindow?.webContents.send("setLastModThatWasRead", displayName);
+      if (packReadingOptions.isCanceled?.()) {
+        // Replaces the "Reading pack" toast, so a canceled read is not reported as finished.
+        mainWindow?.webContents.send("addToast", {
+          type: "info",
+          messages: ["loc:stoppedReadingPack", displayName],
+          startTime: Date.now(),
+          staticToastId: "modReadingInfo",
+        } as Toast);
+      } else {
+        mainWindow?.webContents.send("setLastModThatWasRead", displayName);
+      }
     }
   };
   const replaceRetainedCompatPack = (newPack: Pack, mod?: Mod, isVanilla = false) => {
@@ -6581,7 +6591,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    * filling the heap. They stay out of `appData.packsData` so nothing edits a shared cell, and are dropped
    * with the check.
    * @param mods - The mods to check.
-   * @param isCanceled - Whether the check was canceled, asked before each pack is read.
+   * @param isCanceled - Whether the check was canceled, asked before and while each pack is read.
    * @returns The packs read for this check.
    */
   const prepareModsForCompat = async (mods: Mod[], isCanceled: () => boolean) => {
@@ -6601,9 +6611,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
       const parsedPack = await readPackForCompat(
         mod.path,
-        { skipParsingTables: false, readScripts: true, shareIdenticalCells: true },
+        { skipParsingTables: false, readScripts: true, shareIdenticalCells: true, isCanceled },
         mod.name,
       );
+      // A canceled read leaves its tables half parsed, so the pack is dropped.
+      if (isCanceled()) break;
       compatReadPacks.push(parsedPack);
       if (!retainedPack || !canReusePackIndexForCompat(retainedPack, stat)) {
         replaceRetainedCompatPack(stripPackToIndex(parsedPack), mod);
@@ -9299,9 +9311,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (isCanceled()) break;
         const parsedPack = await readPackForCompat(
           vanillaPackPath,
-          { skipParsingTables: false, tablesToRead: tablesStillToRead, shareIdenticalCells: true },
+          { skipParsingTables: false, tablesToRead: tablesStillToRead, shareIdenticalCells: true, isCanceled },
           nodePath.basename(vanillaPackPath),
         );
+        if (isCanceled()) break;
         const retainedPack = appData.packsData.find((pack) => pathsMatch(pack.path, vanillaPackPath));
         compatReadPacks.push(retainedPack ? overlayParsedTables(retainedPack, parsedPack) : parsedPack);
       }

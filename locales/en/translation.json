@@ -570,6 +570,7 @@
   "faqIssuesThirdC": "Try running the game using vanilla launcher first and then using the manager, it usually fixes it. If that doesn't work you can try adding the mod manager exe into Steam as a non-Steam game and launching it that way.",
   "readingPack": "Reading pack:",
   "finishedReadingPack": "Finished reading pack:",
+  "stoppedReadingPack": "Stopped reading pack:",
   "comparingFilesInPacks": "Comparing <firstPackName> files with <secondPackName>...",
   "comparingKeysInPacks": "Comparing <firstPackName> table keys with other mods...",
   "missingKeys": "Missing Keys",
