@@ -189,6 +189,7 @@ import {
   searchVanillaDb,
 } from "./vanillaDbCache/store";
 import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progress";
+import { createCacheBuildGeneration } from "./vanillaDbCache/buildGeneration";
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
@@ -6506,6 +6507,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     packCollisions: PackCollisions;
   }
   let compatCheckCache: CompatCheckCacheEntry | null = null;
+  // Closing the compat panel only clears the renderer, so a running check asks this between its awaits.
+  const compatCheckRuns = createCacheBuildGeneration();
   const buildCompatCheckSignature = async (mods: Mod[], vanillaPackPaths: string[]): Promise<string | null> => {
     const headerCache = await loadPackHeaderCache();
     const modSignatureData: Array<{
@@ -6578,14 +6581,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    * filling the heap. They stay out of `appData.packsData` so nothing edits a shared cell, and are dropped
    * with the check.
    * @param mods - The mods to check.
+   * @param isCanceled - Whether the check was canceled, asked before each pack is read.
    * @returns The packs read for this check.
    */
-  const prepareModsForCompat = async (mods: Mod[]) => {
+  const prepareModsForCompat = async (mods: Mod[], isCanceled: () => boolean) => {
     let reusedCount = 0;
     let parsedCount = 0;
     let refreshedTextCount = 0;
     const compatReadPacks: Pack[] = [];
     for (const mod of mods) {
+      if (isCanceled()) break;
       const stat = await fs.promises.stat(mod.path);
       const retainedPack = appData.packsData.find((pack) => pathsMatch(pack.path, mod.path));
       if (retainedPack && canReuseParsedPackForCompat(retainedPack, stat)) {
@@ -6610,11 +6615,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     );
     return compatReadPacks;
   };
-  const prepareVanillaPacksForCompat = async (vanillaPackPaths: string[]) => {
+  const prepareVanillaPacksForCompat = async (vanillaPackPaths: string[], isCanceled: () => boolean) => {
     let reusedCount = 0;
     let readCount = 0;
     let refreshedTextCount = 0;
     for (const vanillaPackPath of vanillaPackPaths) {
+      if (isCanceled()) break;
       let stat: fs.Stats;
       try {
         stat = await fs.promises.stat(vanillaPackPath);
@@ -9232,8 +9238,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     return translated;
   });
+  ipcMain.on("cancelCompatCheck", () => {
+    compatCheckRuns.invalidate();
+  });
   ipcMain.on("getCompatData", async (event, mods: Mod[]) => {
     console.log("SET PACK COLLISIONS");
+    // A new check replaces any check still running.
+    compatCheckRuns.invalidate();
+    const runToken = compatCheckRuns.capture();
+    const isCanceled = () => !compatCheckRuns.isCurrent(runToken);
+    const stopIfCanceled = () => {
+      if (isCanceled()) console.log("getCompatData: check canceled");
+      return isCanceled();
+    };
     const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame].dataFolder;
     if (!dataFolder) return;
     const vanillaPackPaths = getCompatVanillaPackPaths(dataFolder);
@@ -9243,10 +9260,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       mainWindow?.webContents.send("setPackCollisions", compatCheckCache.packCollisions);
       return;
     }
-    const compatReadPacks = await prepareModsForCompat(mods);
+    const compatReadPacks = await prepareModsForCompat(mods, isCanceled);
+    if (stopIfCanceled()) return;
     // Startup retains vanilla file indexes. Reuse those unless the pack changed, and only reload
     // script/XML payloads when the optional vanilla analysis actually needs them.
-    await prepareVanillaPacksForCompat(vanillaPackPaths);
+    await prepareVanillaPacksForCompat(vanillaPackPaths, isCanceled);
+    if (stopIfCanceled()) return;
     const lazyVanillaReadPlan = getLazyCompatVanillaReadPlan(mods, vanillaPackPaths);
     // Whatever the cache already holds is filled in place, so the reference scan below runs on the
     // same rows from a cheaper source. Only what it cannot serve is read from the packs.
@@ -9277,6 +9296,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     // reach appData.packsData.
     if (tablesStillToRead.length > 0) {
       for (const vanillaPackPath of lazyVanillaReadPlan.packPaths) {
+        if (isCanceled()) break;
         const parsedPack = await readPackForCompat(
           vanillaPackPath,
           { skipParsingTables: false, tablesToRead: tablesStillToRead, shareIdenticalCells: true },
@@ -9286,6 +9306,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         compatReadPacks.push(retainedPack ? overlayParsedTables(retainedPack, parsedPack) : parsedPack);
       }
     }
+    if (stopIfCanceled()) return;
     // Only the packs this check was asked about, plus vanilla, which the reference resolution needs.
     //
     // appData.packsData accumulates every pack read at any point in the session - browsing a mod in

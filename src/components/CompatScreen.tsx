@@ -117,6 +117,7 @@ const CompatScreen = memo(() => {
     }
     if (wasCompatOpenRef.current && !isCompatOpen) {
       console.log("Compat Panel is closed, getting rid of compat data");
+      window.api?.cancelCompatCheck();
       dispatch(
         setPackCollisions({
           packFileCollisions: [],
@@ -1190,7 +1191,11 @@ const CompatScreen = memo(() => {
       )}
 
       <Modal
-        onClose={() => setIsSpinnerClosed(true)}
+        // Closing the spinner closes the compat screen too, which cancels the check.
+        onClose={() => {
+          setIsSpinnerClosed(true);
+          setIsCompatOpen(false);
+        }}
         show={!isSpinnerClosed && isCompatOpen}
         // show={true}
         size="2xl"

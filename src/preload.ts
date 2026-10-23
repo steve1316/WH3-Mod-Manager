@@ -360,6 +360,7 @@ const api = {
     callback: (event: Electron.IpcRendererEvent, customizableMods: Record<string, string[]>) => void,
   ) => ipcRenderer.on("setCustomizableMods", callback),
   getCompatData: (mods: Mod[]) => ipcRenderer.send("getCompatData", mods),
+  cancelCompatCheck: () => ipcRenderer.send("cancelCompatCheck"),
   selectContentFolder: (requestedGame: SupportedGames | undefined) =>
     ipcRenderer.send("selectContentFolder", requestedGame),
   selectWarhammer3Folder: (requestedGame: SupportedGames | undefined) =>
