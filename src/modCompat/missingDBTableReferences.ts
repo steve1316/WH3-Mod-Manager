@@ -14,6 +14,8 @@ import equals from "fast-deep-equal";
 import * as fs from "fs";
 
 const additionalFieldKeys = additionalFieldKeysOrig as Record<string, Record<string, string[]>>;
+/** How long the reference scan runs before it pauses so the window can respond. */
+const SCAN_PAUSE_INTERVAL_MS = 50;
 
 export const refSorting = (a: DBRefOrigin, b: DBRefOrigin): number => {
   const f = a.targetDBFileName.localeCompare(b.targetDBFileName);
@@ -29,10 +31,26 @@ export const refSorting = (a: DBRefOrigin, b: DBRefOrigin): number => {
   return a.originFileSuffix.localeCompare(b.originFileSuffix);
 };
 
-export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecked?: OnPackChecked) {
+/**
+ * Finds the table references each pack makes that no pack provides. It pauses every few milliseconds, since it runs on
+ * the main process and would otherwise freeze the window, and returns no references once `isCanceled` says to stop.
+ */
+export async function findPackTableReferencesOptimized(
+  packsData: Pack[],
+  onPackChecked?: OnPackChecked,
+  isCanceled?: () => boolean,
+) {
   const packsTableReferences: Record<string, PackTableReferences> = {};
   const allOwnKeys: Record<DBFileName, Record<string, Set<string>>> = {};
   console.time("findPackTableReferencesOptimized");
+  let nextPauseAt = Date.now() + SCAN_PAUSE_INTERVAL_MS;
+  const pauseAndCheckCanceled = async () => {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    nextPauseAt = Date.now() + SCAN_PAUSE_INTERVAL_MS;
+    if (!isCanceled?.()) return false;
+    console.timeEnd("findPackTableReferencesOptimized");
+    return true;
+  };
   const tablesToReferenceFieldNames = gameToReferences[appData.currentGame];
   const tablesAndDBFieldsThatReference = gameToDBFieldsThatReference[appData.currentGame];
   const vanillaPackNames = new Set(appData.vanillaPacks.map((pack) => pack.name));
@@ -48,6 +66,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
     const isVanillaPack = vanillaPackNames.has(pack.name);
 
     for (const packFile of pack.packedFiles) {
+      if (Date.now() >= nextPauseAt && (await pauseAndCheckCanceled())) return {};
       let wasTextAnalyzed = false;
       if (packFile.name.endsWith(".lua") && packFile.text) {
         appendToAddListenerRegistry(pack, packFile.name, packFile.text);
@@ -171,6 +190,7 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
   for (const [packName, packTableReferences] of Object.entries(packsTableReferences)) {
     // don't check vanilla packs for missing refs
     if (vanillaPackNames.has(packName)) continue;
+    if (Date.now() >= nextPauseAt && (await pauseAndCheckCanceled())) return {};
 
     for (const [dbFileName, dbFieldNameToRefKeys] of Object.entries(packTableReferences.refs)) {
       for (const [dbFieldName, refKeys] of Object.entries(dbFieldNameToRefKeys)) {
@@ -254,12 +274,12 @@ export function findPackTableReferencesOptimized(packsData: Pack[], onPackChecke
 }
 
 // TEST METHOD, test the optimized algorithm against the unoptimized one to check for equality
-export function findPackTableMissingReferencesAndCompareWithUnoptimizedMethod(
+export async function findPackTableMissingReferencesAndCompareWithUnoptimizedMethod(
   packsData: Pack[],
   onPackChecked?: OnPackChecked,
 ) {
   const missingRefs1 = findPackTableReferences(packsData, onPackChecked);
-  const missingRefs2 = findPackTableMissingReferences(packsData, onPackChecked);
+  const missingRefs2 = await findPackTableMissingReferences(packsData, onPackChecked);
 
   Object.values(missingRefs1).forEach((refs) => refs.sort(refSorting));
   Object.values(missingRefs2).forEach((refs) => refs.sort(refSorting));
@@ -274,8 +294,8 @@ export function findPackTableMissingReferencesAndCompareWithUnoptimizedMethod(
   return missingRefs1;
 }
 
-export function findPackTableMissingReferences(packsData: Pack[], onPackChecked?: OnPackChecked) {
-  const missingRefs = findPackTableReferencesOptimized(packsData, onPackChecked);
+export async function findPackTableMissingReferences(packsData: Pack[], onPackChecked?: OnPackChecked) {
+  const missingRefs = await findPackTableReferencesOptimized(packsData, onPackChecked);
 
   Object.values(missingRefs).forEach((refs) => refs.sort(refSorting));
 

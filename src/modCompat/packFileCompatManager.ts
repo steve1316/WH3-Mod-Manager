@@ -8,7 +8,7 @@ import { emptyPackToTablesWithUniqueIds, processPackToTablesWithUniqueIds } from
 import { findPackFileCollisions } from "./packFileCollisions";
 import { findPackTableCollisions } from "./packTableCollisions";
 
-export function getCompatData(
+export async function getCompatData(
   packsData: Pack[],
   onPackChecked?: (
     currentIndex: number,
@@ -17,9 +17,12 @@ export function getCompatData(
     secondPackName: string,
     type: PackCollisionCheckType,
   ) => void,
-): PackCollisions {
+  isCanceled?: () => boolean,
+): Promise<PackCollisions | undefined> {
   const { missingRefs, uniqueIdsCollisions, scriptListenerCollisions, packFileAnalysisErrors } =
-    findPackTableMissingReferencesAndRunAnalysis(packsData, onPackChecked);
+    await findPackTableMissingReferencesAndRunAnalysis(packsData, onPackChecked, isCanceled);
+  // A check canceled during the scan skips the remaining stages.
+  if (isCanceled?.()) return undefined;
 
   const missingFileRefs = findMissingFileReferences(packsData);
 
@@ -53,11 +56,15 @@ export const emptyAllCompatDataCollections = () => {
   emptyPackFileToFileReferences();
 };
 
-export function findPackTableMissingReferencesAndRunAnalysis(packsData: Pack[], onPackChecked?: OnPackChecked) {
+export async function findPackTableMissingReferencesAndRunAnalysis(
+  packsData: Pack[],
+  onPackChecked?: OnPackChecked,
+  isCanceled?: () => boolean,
+) {
   // keep this at top, these are populated inside findPackTableReferencesOptimized
   emptyAllCompatDataCollections();
 
-  const missingRefs = findPackTableReferencesOptimized(packsData, onPackChecked);
+  const missingRefs = await findPackTableReferencesOptimized(packsData, onPackChecked, isCanceled);
 
   Object.values(missingRefs).forEach((refs) => refs.sort(refSorting));
 

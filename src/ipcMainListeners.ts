@@ -9322,7 +9322,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
     let lastProgressSentAt = 0;
     let lastProgressType: PackCollisionCheckType | undefined;
-    const packCollisions = getCompatData(
+    const packCollisions = await getCompatData(
       packsToCheck,
       (currentIndex, maxIndex, firstPackName, secondPackName, type) => {
         const now = Date.now();
@@ -9339,7 +9339,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           type,
         } as PackCollisionsCheckProgressData);
       },
+      isCanceled,
     );
+    if (stopIfCanceled() || !packCollisions) {
+      emptyAllCompatDataCollections();
+      return;
+    }
     if (compatSignature) {
       compatCheckCache = {
         signatureHash: compatSignature,
